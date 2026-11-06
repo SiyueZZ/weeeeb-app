@@ -37,16 +37,16 @@ export default function PhotoBoothPage() {
 
   return (
     <div className="flex flex-row h-screen w-screen overflow-hidden bg-black text-white">
-      {/* LEFT COLUMN: Authentic 35mm Continuous Film Strip running from top to bottom */}
-      <aside className="w-[84px] sm:w-[104px] md:w-[130px] h-full flex-shrink-0 bg-black border-r border-zinc-900 z-30">
+      {/* LEFT COLUMN: Fixed width 35mm film strip */}
+      <aside className="w-[84px] min-w-[84px] max-w-[84px] sm:w-[106px] sm:min-w-[106px] sm:max-w-[106px] h-full flex-shrink-0 bg-black z-30 overflow-hidden">
         <FilmStripSelector
           selectedFilter={selectedFilter}
           onSelectFilter={setSelectedFilter}
         />
       </aside>
 
-      {/* RIGHT COLUMN: "PHOTO HERE" - Main Viewfinder & Developing Area */}
-      <main className="flex-1 h-full relative flex flex-col justify-between overflow-hidden bg-black">
+      {/* RIGHT COLUMN: "PHOTO HERE" - Camera Viewfinder / Developed Results */}
+      <main className="flex-1 min-w-0 h-full relative flex flex-col justify-between overflow-hidden bg-black">
         {step === "camera" && (
           <CameraView
             selectedFilter={selectedFilter}
