@@ -21,29 +21,41 @@ export default function FilmStripSelector({
   const isUserScrollingRef = useRef(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Generate filtered thumbnail previews from the sample portrait image
+  // Initialize thumbnails (using high-res references when available or generating via WebGL)
   useEffect(() => {
     let isCancelled = false;
+
+    // First assign direct sample references
+    const initialThumbs: Record<string, string> = {};
+    FILM_FILTERS.forEach((f) => {
+      if (f.sampleRefImage) {
+        initialThumbs[f.id] = f.sampleRefImage;
+      }
+    });
+    setThumbnails(initialThumbs);
+
+    // Load base sample image to render remaining procedural filters
     const img = new Image();
     img.src = "/sample-portrait.jpg";
     img.crossOrigin = "anonymous";
 
     img.onload = async () => {
       if (isCancelled) return;
-      const thumbs: Record<string, string> = {};
+      const generated: Record<string, string> = { ...initialThumbs };
 
       for (const filter of FILM_FILTERS) {
-        try {
-          // Render crisp 120x90 miniature thumbnail
-          const canvas = await renderFilteredImage(img, filter, 120, 90, false);
-          thumbs[filter.id] = canvas.toDataURL("image/jpeg", 0.85);
-        } catch (err) {
-          console.warn("Could not generate thumb for", filter.id, err);
+        if (!generated[filter.id]) {
+          try {
+            const canvas = await renderFilteredImage(img, filter, 120, 90, false);
+            generated[filter.id] = canvas.toDataURL("image/jpeg", 0.85);
+          } catch (err) {
+            console.warn("Could not generate thumb for", filter.id, err);
+          }
         }
       }
 
       if (!isCancelled) {
-        setThumbnails(thumbs);
+        setThumbnails(generated);
       }
     };
 
@@ -228,8 +240,8 @@ export default function FilmStripSelector({
         })}
       </div>
 
-      {/* Subtle "WIND FILM" label */}
-      <div className="text-[8px] text-zinc-500 font-mono uppercase tracking-widest text-center mt-1 rotate-0">
+      {/* "WIND FILM" indicator */}
+      <div className="text-[8px] text-amber-500/70 font-mono uppercase tracking-widest text-center mt-1 rotate-0">
         ▲ WIND FILM ▼
       </div>
     </div>

@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { SwitchCamera, Volume2, VolumeX, Sparkles, Film } from "lucide-react";
+import { SwitchCamera, Volume2, VolumeX, Sparkles, Film, Image as ImageIcon } from "lucide-react";
 import { FilmFilterConfig, FILM_FILTERS } from "@/lib/filters";
-import { WebGLFilmPipeline, drawDisposableDateStamp } from "@/lib/webglPipeline";
+import { WebGLFilmPipeline } from "@/lib/webglPipeline";
 import FilmStripSelector from "./FilmStripSelector";
 import { playCountdownBeep, playShutterSound } from "@/lib/audio";
 
@@ -20,12 +20,14 @@ export default function CameraView({
 }: CameraViewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const sampleImgRef = useRef<HTMLImageElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const pipelineRef = useRef<WebGLFilmPipeline | null>(null);
   const animFrameRef = useRef<number | null>(null);
 
   const [selectedFilter, setSelectedFilter] = useState<FilmFilterConfig>(initialFilter);
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
+  const [useSamplePhoto, setUseSamplePhoto] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [isCapturing, setIsCapturing] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -34,6 +36,14 @@ export default function CameraView({
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [showFilterBanner, setShowFilterBanner] = useState(false);
   const bannerTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Preload sample image for instant live testing
+  useEffect(() => {
+    const img = new Image();
+    img.src = "/sample-portrait.jpg";
+    img.crossOrigin = "anonymous";
+    sampleImgRef.current = img;
+  }, []);
 
   // Stop camera tracks cleanly
   const stopStream = useCallback(() => {
@@ -72,11 +82,13 @@ export default function CameraView({
   }, [facingMode, stopStream, onError]);
 
   useEffect(() => {
-    startCamera();
+    if (!useSamplePhoto) {
+      startCamera();
+    }
     return () => {
       stopStream();
     };
-  }, [startCamera, stopStream]);
+  }, [startCamera, stopStream, useSamplePhoto]);
 
   // Initialize and run real-time WebGL render loop
   useEffect(() => {
@@ -99,11 +111,17 @@ export default function CameraView({
     }
 
     const renderLoop = () => {
-      const video = videoRef.current;
       const pipeline = pipelineRef.current;
 
-      if (pipeline && video && video.readyState >= 2) {
-        pipeline.render(video, selectedFilter, facingMode === "user");
+      if (pipeline) {
+        if (useSamplePhoto && sampleImgRef.current && sampleImgRef.current.complete) {
+          pipeline.render(sampleImgRef.current, selectedFilter, false);
+        } else {
+          const video = videoRef.current;
+          if (video && video.readyState >= 2) {
+            pipeline.render(video, selectedFilter, facingMode === "user");
+          }
+        }
       }
       animFrameRef.current = requestAnimationFrame(renderLoop);
     };
@@ -118,7 +136,7 @@ export default function CameraView({
         pipelineRef.current = null;
       }
     };
-  }, [selectedFilter, facingMode]);
+  }, [selectedFilter, facingMode, useSamplePhoto]);
 
   // When user changes filter, show animated top banner
   const handleSelectFilter = (filter: FilmFilterConfig) => {
@@ -130,8 +148,19 @@ export default function CameraView({
     }, 2200);
   };
 
-  // Grab raw uncompressed frame from video stream
+  // Grab raw uncompressed frame
   const grabRawFrame = useCallback((): string | null => {
+    if (useSamplePhoto && sampleImgRef.current) {
+      const img = sampleImgRef.current;
+      const c = document.createElement("canvas");
+      c.width = img.naturalWidth || 1024;
+      c.height = img.naturalHeight || 682;
+      const ctx = c.getContext("2d");
+      if (!ctx) return null;
+      ctx.drawImage(img, 0, 0);
+      return c.toDataURL("image/jpeg", 0.95);
+    }
+
     const video = videoRef.current;
     if (!video || video.videoWidth === 0) return null;
 
@@ -147,7 +176,7 @@ export default function CameraView({
     }
     ctx.drawImage(video, 0, 0);
     return c.toDataURL("image/jpeg", 0.95);
-  }, [facingMode]);
+  }, [facingMode, useSamplePhoto]);
 
   // Sequence shutter click: shoots 4 photos in sequence
   const handleShutterClick = async () => {
@@ -290,16 +319,32 @@ export default function CameraView({
           )}
         </div>
 
-        {/* Flip camera button */}
-        <button
-          onClick={toggleCameraFacing}
-          disabled={isCapturing}
-          type="button"
-          aria-label="Flip camera"
-          className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/15 flex items-center justify-center active:scale-95 disabled:opacity-40 transition-all cursor-pointer"
-        >
-          <SwitchCamera className="w-4 h-4 text-white" />
-        </button>
+        {/* Right controls: Sample photo toggle + Camera flip */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setUseSamplePhoto(!useSamplePhoto)}
+            type="button"
+            aria-label="Toggle sample portrait"
+            title="Toggle between live camera and reference sample"
+            className={`w-10 h-10 rounded-full backdrop-blur-md border flex items-center justify-center active:scale-95 transition-all cursor-pointer ${
+              useSamplePhoto
+                ? "bg-amber-500/80 border-amber-400 text-black shadow-lg"
+                : "bg-black/60 border-white/15 text-white"
+            }`}
+          >
+            <ImageIcon className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={toggleCameraFacing}
+            disabled={isCapturing || useSamplePhoto}
+            type="button"
+            aria-label="Flip camera"
+            className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/15 flex items-center justify-center active:scale-95 disabled:opacity-40 transition-all cursor-pointer"
+          >
+            <SwitchCamera className="w-4 h-4 text-white" />
+          </button>
+        </div>
       </div>
 
       {/* Filter Name Fade-In Notification Banner near top */}
@@ -361,7 +406,7 @@ export default function CameraView({
             {/* Outer White / Amber Ring */}
             <span className="absolute inset-0 rounded-full border-4 border-white/90 shadow-2xl transition-transform duration-200 group-hover:scale-105 group-active:scale-95" />
 
-            {/* Inner Shutter Circle with subtle warm film center */}
+            {/* Inner Shutter Circle */}
             <span
               className={`w-[62px] h-[62px] rounded-full transition-all duration-150 ${
                 isCapturing
