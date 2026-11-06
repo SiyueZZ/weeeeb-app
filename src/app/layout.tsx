@@ -33,14 +33,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full bg-black text-white antialiased">
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className="h-full bg-black text-white antialiased"
+    >
       <head>
+        <meta name="google" content="notranslate" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Photo Booth" />
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
-      <body className="h-full w-full bg-black text-white overflow-hidden select-none font-sans">
+      <body
+        suppressHydrationWarning
+        className="h-full w-full bg-black text-white overflow-hidden select-none font-sans"
+      >
         {children}
       </body>
     </html>
