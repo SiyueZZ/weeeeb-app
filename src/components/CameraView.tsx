@@ -28,6 +28,7 @@ export default function CameraView({
 
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
   const [useSamplePhoto, setUseSamplePhoto] = useState(false);
+  const [cameraActive, setCameraActive] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [isCapturing, setIsCapturing] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -37,11 +38,14 @@ export default function CameraView({
   const [showFilterBanner, setShowFilterBanner] = useState(false);
   const bannerTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Preload sample image
+  // Preload sample image for instant live testing & fallback
   useEffect(() => {
     const img = new Image();
     img.src = "/sample-portrait.jpg";
     img.crossOrigin = "anonymous";
+    img.onload = () => {
+      sampleImgRef.current = img;
+    };
     sampleImgRef.current = img;
   }, []);
 
@@ -61,17 +65,18 @@ export default function CameraView({
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
+    setCameraActive(false);
   }, []);
 
-  // Initialize camera
+  // Initialize camera with forgiving constraints for laptops and mobile
   const startCamera = useCallback(async () => {
     stopStream();
     try {
       const constraints: MediaStreamConstraints = {
         video: {
-          facingMode: facingMode,
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          facingMode: facingMode ? { ideal: facingMode } : undefined,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
         },
         audio: false,
       };
@@ -82,14 +87,15 @@ export default function CameraView({
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play().catch(() => {});
+        setCameraActive(true);
       }
     } catch (err: unknown) {
-      console.error("Camera access error:", err);
-      const message =
-        err instanceof Error ? err.message : "Failed to access camera";
-      onError(message);
+      console.warn("Camera access fallback to sample mode:", err);
+      // If camera is unavailable or not granted, activate sample mode instead of blocking
+      setCameraActive(false);
+      setUseSamplePhoto(true);
     }
-  }, [facingMode, stopStream, onError]);
+  }, [facingMode, stopStream]);
 
   useEffect(() => {
     if (!useSamplePhoto) {
@@ -107,8 +113,10 @@ export default function CameraView({
 
     const resizeCanvas = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.round(canvas.clientWidth * dpr);
-      canvas.height = Math.round(canvas.clientHeight * dpr);
+      const w = canvas.clientWidth || 640;
+      const h = canvas.clientHeight || 480;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
     };
 
     resizeCanvas();
@@ -124,13 +132,13 @@ export default function CameraView({
       const pipeline = pipelineRef.current;
 
       if (pipeline) {
-        if (useSamplePhoto && sampleImgRef.current && sampleImgRef.current.complete) {
+        const video = videoRef.current;
+        const isVideoReady = cameraActive && video && video.readyState >= 2 && video.videoWidth > 0;
+
+        if (isVideoReady && !useSamplePhoto) {
+          pipeline.render(video, activeFilter, facingMode === "user");
+        } else if (sampleImgRef.current && sampleImgRef.current.complete) {
           pipeline.render(sampleImgRef.current, activeFilter, false);
-        } else {
-          const video = videoRef.current;
-          if (video && video.readyState >= 2) {
-            pipeline.render(video, activeFilter, facingMode === "user");
-          }
         }
       }
       animFrameRef.current = requestAnimationFrame(renderLoop);
@@ -146,11 +154,30 @@ export default function CameraView({
         pipelineRef.current = null;
       }
     };
-  }, [activeFilter, facingMode, useSamplePhoto]);
+  }, [activeFilter, facingMode, useSamplePhoto, cameraActive]);
 
   // Grab raw uncompressed frame
   const grabRawFrame = useCallback((): string | null => {
-    if (useSamplePhoto && sampleImgRef.current) {
+    const video = videoRef.current;
+    const isVideoReady = cameraActive && video && video.readyState >= 2 && video.videoWidth > 0;
+
+    if (isVideoReady && !useSamplePhoto) {
+      const c = document.createElement("canvas");
+      c.width = video.videoWidth;
+      c.height = video.videoHeight;
+      const ctx = c.getContext("2d");
+      if (!ctx) return null;
+
+      if (facingMode === "user") {
+        ctx.translate(c.width, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(video, 0, 0);
+      return c.toDataURL("image/jpeg", 0.95);
+    }
+
+    // Otherwise grab sample photo
+    if (sampleImgRef.current) {
       const img = sampleImgRef.current;
       const c = document.createElement("canvas");
       c.width = img.naturalWidth || 1024;
@@ -161,22 +188,8 @@ export default function CameraView({
       return c.toDataURL("image/jpeg", 0.95);
     }
 
-    const video = videoRef.current;
-    if (!video || video.videoWidth === 0) return null;
-
-    const c = document.createElement("canvas");
-    c.width = video.videoWidth;
-    c.height = video.videoHeight;
-    const ctx = c.getContext("2d");
-    if (!ctx) return null;
-
-    if (facingMode === "user") {
-      ctx.translate(c.width, 0);
-      ctx.scale(-1, 1);
-    }
-    ctx.drawImage(video, 0, 0);
-    return c.toDataURL("image/jpeg", 0.95);
-  }, [facingMode, useSamplePhoto]);
+    return null;
+  }, [facingMode, useSamplePhoto, cameraActive]);
 
   // Shutter click sequence: 4 photos
   const handleShutterClick = async () => {
@@ -326,7 +339,7 @@ export default function CameraView({
             aria-label="Toggle sample portrait"
             title="Toggle between live camera and reference sample"
             className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full backdrop-blur-md border flex items-center justify-center active:scale-95 transition-all cursor-pointer ${
-              useSamplePhoto
+              useSamplePhoto || !cameraActive
                 ? "bg-amber-500/80 border-amber-400 text-black shadow-lg"
                 : "bg-black/60 border-white/15 text-white"
             }`}

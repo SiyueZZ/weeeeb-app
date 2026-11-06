@@ -137,7 +137,6 @@ export class WebGLFilmPipeline {
   private positionBuffer: WebGLBuffer | null = null;
   private texCoordBuffer: WebGLBuffer | null = null;
 
-  // Uniform locations
   private uImageLoc: WebGLUniformLocation | null = null;
   private uTimeLoc: WebGLUniformLocation | null = null;
   private uContrastLoc: WebGLUniformLocation | null = null;
@@ -157,7 +156,11 @@ export class WebGLFilmPipeline {
   private startTime: number = Date.now();
 
   constructor(canvas: HTMLCanvasElement) {
-    const gl = canvas.getContext("webgl", { preserveDrawingBuffer: true, alpha: false });
+    const gl = canvas.getContext("webgl", {
+      preserveDrawingBuffer: true,
+      alpha: false,
+      powerPreference: "high-performance",
+    });
     if (!gl) {
       throw new Error("WebGL not supported");
     }
@@ -183,7 +186,6 @@ export class WebGLFilmPipeline {
     }
     this.program = program;
 
-    // Cache uniforms
     this.uImageLoc = gl.getUniformLocation(program, "u_image");
     this.uTimeLoc = gl.getUniformLocation(program, "u_time");
     this.uContrastLoc = gl.getUniformLocation(program, "u_contrast");
@@ -200,7 +202,6 @@ export class WebGLFilmPipeline {
     this.uBlurLoc = gl.getUniformLocation(program, "u_blur");
     this.uIsMonoLoc = gl.getUniformLocation(program, "u_isMono");
 
-    // Fullscreen quad positions
     this.positionBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
     gl.bufferData(
@@ -216,10 +217,8 @@ export class WebGLFilmPipeline {
       gl.STATIC_DRAW
     );
 
-    // Texture coordinates buffer
     this.texCoordBuffer = gl.createBuffer();
 
-    // Create texture
     this.texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -228,10 +227,6 @@ export class WebGLFilmPipeline {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   }
 
-  /**
-   * Renders a video or image source through the WebGL pipeline.
-   * Handles aspect-ratio cover crop and front-camera mirroring.
-   */
   public render(
     source: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement,
     filter: FilmFilterConfig,
@@ -242,17 +237,22 @@ export class WebGLFilmPipeline {
 
     const canvasWidth = gl.canvas.width;
     const canvasHeight = gl.canvas.height;
-    gl.viewport(0, 0, canvasWidth, canvasHeight);
+    if (canvasWidth <= 0 || canvasHeight <= 0) return;
 
+    gl.viewport(0, 0, canvasWidth, canvasHeight);
     gl.useProgram(this.program);
 
-    // Bind texture and update from video/image source
-    gl.bindTexture(gl.TEXTURE_2D, this.texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    // Safely update texture from source
+    try {
+      gl.bindTexture(gl.TEXTURE_2D, this.texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    } catch {
+      // Source might not be ready yet
+      return;
+    }
 
-    // Compute aspect-ratio object-cover texture coordinates
-    const sourceWidth = (source as HTMLVideoElement).videoWidth || source.width;
-    const sourceHeight = (source as HTMLVideoElement).videoHeight || source.height;
+    const sourceWidth = (source as HTMLVideoElement).videoWidth || source.width || 1;
+    const sourceHeight = (source as HTMLVideoElement).videoHeight || source.height || 1;
 
     let u0 = 0.0;
     let u1 = 1.0;
@@ -264,13 +264,11 @@ export class WebGLFilmPipeline {
       const targetAspect = canvasWidth / canvasHeight;
 
       if (sourceAspect > targetAspect) {
-        // Source is wider than viewport -> crop left and right
         const visibleWidth = targetAspect / sourceAspect;
         const cropX = (1.0 - visibleWidth) / 2.0;
         u0 = cropX;
         u1 = 1.0 - cropX;
       } else {
-        // Source is taller than viewport -> crop top and bottom
         const visibleHeight = sourceAspect / targetAspect;
         const cropY = (1.0 - visibleHeight) / 2.0;
         v0 = cropY;
@@ -278,7 +276,6 @@ export class WebGLFilmPipeline {
       }
     }
 
-    // Mirror horizontally if front camera
     let leftU = u0;
     let rightU = u1;
     if (isMirrored) {
@@ -286,7 +283,6 @@ export class WebGLFilmPipeline {
       rightU = u0;
     }
 
-    // Next.js / WebGL Y coordinates: top is 0, bottom is 1 in standard HTML5 video
     const texCoords = new Float32Array([
       leftU,  v1,
       rightU, v1,
@@ -299,7 +295,6 @@ export class WebGLFilmPipeline {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.texCoordBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.DYNAMIC_DRAW);
 
-    // Setup attributes
     const posLoc = gl.getAttribLocation(this.program, "a_position");
     gl.enableVertexAttribArray(posLoc);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
@@ -310,7 +305,6 @@ export class WebGLFilmPipeline {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.texCoordBuffer);
     gl.vertexAttribPointer(texLoc, 2, gl.FLOAT, false, 0, 0);
 
-    // Set uniforms
     const time = (Date.now() - this.startTime) / 1000.0;
     gl.uniform1f(this.uTimeLoc, time);
     gl.uniform1f(this.uContrastLoc, filter.contrast);
@@ -329,7 +323,6 @@ export class WebGLFilmPipeline {
 
     gl.uniform1i(this.uImageLoc, 0);
 
-    // Draw full-screen quad
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
@@ -342,8 +335,30 @@ export class WebGLFilmPipeline {
   }
 }
 
+// Single shared offscreen canvas and pipeline to prevent WebGL context exhaustion
+let sharedOffscreenCanvas: HTMLCanvasElement | null = null;
+let sharedOffscreenPipeline: WebGLFilmPipeline | null = null;
+
+function getSharedOffscreenPipeline(): {
+  canvas: HTMLCanvasElement;
+  pipeline: WebGLFilmPipeline;
+} | null {
+  if (typeof document === "undefined") return null;
+  if (!sharedOffscreenCanvas) {
+    sharedOffscreenCanvas = document.createElement("canvas");
+    try {
+      sharedOffscreenPipeline = new WebGLFilmPipeline(sharedOffscreenCanvas);
+    } catch (e) {
+      console.warn("Could not create shared offscreen WebGL pipeline:", e);
+      return null;
+    }
+  }
+  if (!sharedOffscreenPipeline) return null;
+  return { canvas: sharedOffscreenCanvas, pipeline: sharedOffscreenPipeline };
+}
+
 /**
- * Applies a film filter to an image source and renders it to an HTMLCanvasElement
+ * Applies a film filter to an image source using the shared pipeline, avoiding context creation limits
  */
 export async function renderFilteredImage(
   source: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement,
@@ -352,28 +367,28 @@ export async function renderFilteredImage(
   targetHeight: number,
   isMirrored: boolean = false
 ): Promise<HTMLCanvasElement> {
-  const canvas = document.createElement("canvas");
-  canvas.width = targetWidth;
-  canvas.height = targetHeight;
+  const shared = getSharedOffscreenPipeline();
+  const outCanvas = document.createElement("canvas");
+  outCanvas.width = targetWidth;
+  outCanvas.height = targetHeight;
+  const ctx = outCanvas.getContext("2d");
+  if (!ctx) return outCanvas;
 
-  const pipeline = new WebGLFilmPipeline(canvas);
-  pipeline.render(source, filter, isMirrored);
-  pipeline.destroy();
-
-  // If Disposable Camera date stamp is required, stamp it onto a 2D canvas overlay
-  if (filter.dateStamp) {
-    const outCanvas = document.createElement("canvas");
-    outCanvas.width = targetWidth;
-    outCanvas.height = targetHeight;
-    const ctx = outCanvas.getContext("2d");
-    if (ctx) {
-      ctx.drawImage(canvas, 0, 0);
-      drawDisposableDateStamp(ctx, targetWidth, targetHeight);
-      return outCanvas;
-    }
+  if (shared) {
+    shared.canvas.width = targetWidth;
+    shared.canvas.height = targetHeight;
+    shared.pipeline.render(source, filter, isMirrored);
+    ctx.drawImage(shared.canvas, 0, 0);
+  } else {
+    // Fallback if WebGL unavailable
+    ctx.drawImage(source, 0, 0, targetWidth, targetHeight);
   }
 
-  return canvas;
+  if (filter.dateStamp) {
+    drawDisposableDateStamp(ctx, targetWidth, targetHeight);
+  }
+
+  return outCanvas;
 }
 
 /**
@@ -401,13 +416,11 @@ export function drawDisposableDateStamp(
   const x = width - Math.round(width * 0.04);
   const y = height - Math.round(height * 0.04);
 
-  // Outer glow
   ctx.shadowColor = "#ff4500";
   ctx.shadowBlur = fontSize * 0.6;
   ctx.fillStyle = "#ff6a00";
   ctx.fillText(stampText, x, y);
 
-  // Core bright neon orange text
   ctx.shadowBlur = 0;
   ctx.fillStyle = "#ffaa00";
   ctx.fillText(stampText, x, y);
