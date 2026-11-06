@@ -25,7 +25,6 @@ export default function FilmStripSelector({
   useEffect(() => {
     let isCancelled = false;
 
-    // First assign direct sample references
     const initialThumbs: Record<string, string> = {};
     FILM_FILTERS.forEach((f) => {
       if (f.sampleRefImage) {
@@ -34,7 +33,6 @@ export default function FilmStripSelector({
     });
     setThumbnails(initialThumbs);
 
-    // Load base sample image to render remaining procedural filters
     const img = new Image();
     img.src = "/sample-portrait.jpg";
     img.crossOrigin = "anonymous";
@@ -99,10 +97,10 @@ export default function FilmStripSelector({
       if (closestFilter.id !== selectedFilter.id) {
         onSelectFilter(closestFilter);
         if (typeof navigator !== "undefined" && navigator.vibrate) {
-          navigator.vibrate(12);
+          navigator.vibrate(10);
         }
       }
-    }, 90);
+    }, 70);
   }, [disabled, selectedFilter, onSelectFilter]);
 
   // Click on a frame to smoothly scroll it to center
@@ -116,12 +114,12 @@ export default function FilmStripSelector({
       });
       onSelectFilter(filter);
       if (typeof navigator !== "undefined" && navigator.vibrate) {
-        navigator.vibrate(15);
+        navigator.vibrate(12);
       }
     }
   };
 
-  // Center the selected filter on initial load
+  // Center selected filter on mount
   useEffect(() => {
     if (!isUserScrollingRef.current) {
       const el = frameRefs.current.get(selectedFilter.id);
@@ -135,20 +133,32 @@ export default function FilmStripSelector({
   }, [selectedFilter.id]);
 
   return (
-    <div className="relative z-30 h-full flex flex-col justify-center pointer-events-auto select-none">
-      {/* 35mm Film Strip Container */}
+    <div className="relative h-full w-full bg-black select-none flex flex-col justify-between overflow-hidden">
+      {/* Center notch / alignment indicator arrow on the right edge */}
+      <div className="absolute right-0 top-1/2 -translate-y-1/2 z-20 pointer-events-none flex items-center">
+        <div className="w-0 h-0 border-y-[6px] border-y-transparent border-r-[8px] border-r-amber-400 drop-shadow-[0_0_6px_rgba(251,146,60,0.8)]" />
+      </div>
+
+      {/* Top subtle branding */}
+      <div className="w-full pt-2 pb-1 text-center bg-black/90 border-b border-zinc-900 z-10 flex-shrink-0">
+        <span className="text-[8px] sm:text-[9px] font-mono tracking-widest text-amber-500/80 font-bold uppercase">
+          35MM FILM
+        </span>
+      </div>
+
+      {/* 35mm Continuous Film Strip with Real Sprocket Holes */}
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="w-[82px] sm:w-[88px] h-[72vh] max-h-[580px] overflow-y-auto scrollbar-none overscroll-contain flex flex-col items-center snap-y snap-mandatory bg-black/85 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl py-[calc(36vh-45px)]"
+        className="flex-1 w-full overflow-y-auto scrollbar-none overscroll-contain snap-y snap-mandatory py-[calc(50vh-50px)]"
         style={{
           scrollSnapType: "y mandatory",
         }}
       >
         {FILM_FILTERS.map((filter, index) => {
           const isSelected = filter.id === selectedFilter.id;
-          const frameNum = `${index + 12}`;
-          const frameNumA = `${index + 12}A`;
+          const frameNum = `${index + 16}`;
+          const frameNumA = `${index + 16}A`;
 
           return (
             <div
@@ -158,50 +168,57 @@ export default function FilmStripSelector({
                 else frameRefs.current.delete(filter.id);
               }}
               onClick={() => scrollToFilter(filter)}
-              className="w-full flex-shrink-0 snap-center flex flex-col items-center py-2 cursor-pointer transition-all duration-200"
+              className="w-full snap-center flex flex-col items-center cursor-pointer py-1 px-1.5 transition-transform duration-150"
               style={{
                 scrollSnapAlign: "center",
               }}
             >
               {/* Authentic 35mm Film Negative Frame */}
               <div
-                className={`relative w-[74px] sm:w-[78px] rounded-sm transition-all duration-200 ${
+                className={`relative w-full rounded-sm overflow-hidden transition-all duration-200 ${
                   isSelected
-                    ? "scale-105 ring-2 ring-amber-400 shadow-[0_0_16px_rgba(251,146,60,0.6)] z-10"
+                    ? "scale-[1.03] ring-2 ring-amber-400 shadow-[0_0_18px_rgba(251,146,60,0.7)] z-10"
                     : "opacity-65 hover:opacity-90"
                 }`}
                 style={{
-                  backgroundColor: "#0d0d0f",
-                  border: isSelected ? "1.5px solid #fb923c" : "1px solid #27272a",
+                  backgroundColor: "#000000",
+                  border: isSelected ? "1.5px solid #fb923c" : "1px solid #18181b",
                 }}
               >
-                {/* Left & Right 35mm Sprocket Holes */}
-                <div className="absolute left-0 top-0 bottom-0 w-[8px] flex flex-col justify-around items-center py-1 bg-black pointer-events-none">
-                  {[0, 1, 2].map((s) => (
+                {/* Left 35mm Sprocket Holes Column */}
+                <div className="absolute left-0 top-0 bottom-0 w-[12px] sm:w-[15px] flex flex-col justify-around items-center py-1 bg-black z-10 pointer-events-none">
+                  {[0, 1, 2, 3].map((s) => (
                     <span
                       key={s}
-                      className="w-[5px] h-[7px] bg-zinc-800/90 rounded-[1.5px] border border-white/15"
+                      className="w-[6px] sm:w-[8px] h-[7px] sm:h-[9px] bg-white rounded-[1.5px] shadow-inner"
+                      style={{
+                        boxShadow: "inset 0 0 2px rgba(0,0,0,0.8)",
+                      }}
                     />
                   ))}
                 </div>
 
-                <div className="absolute right-0 top-0 bottom-0 w-[8px] flex flex-col justify-around items-center py-1 bg-black pointer-events-none">
-                  {[0, 1, 2].map((s) => (
+                {/* Right 35mm Sprocket Holes Column */}
+                <div className="absolute right-0 top-0 bottom-0 w-[12px] sm:w-[15px] flex flex-col justify-around items-center py-1 bg-black z-10 pointer-events-none">
+                  {[0, 1, 2, 3].map((s) => (
                     <span
                       key={s}
-                      className="w-[5px] h-[7px] bg-zinc-800/90 rounded-[1.5px] border border-white/15"
+                      className="w-[6px] sm:w-[8px] h-[7px] sm:h-[9px] bg-white rounded-[1.5px] shadow-inner"
+                      style={{
+                        boxShadow: "inset 0 0 2px rgba(0,0,0,0.8)",
+                      }}
                     />
                   ))}
                 </div>
 
-                {/* Top Film Edge Markings */}
-                <div className="w-full px-2.5 pt-0.5 pb-0.5 flex items-center justify-between text-[7px] font-mono tracking-tighter text-amber-500/80 bg-black">
-                  <span>▶ {frameNum}</span>
-                  <span className="text-[6px] truncate max-w-[32px]">{filter.brand}</span>
+                {/* Top Film Frame Divider with Markings */}
+                <div className="w-full pl-4 pr-4 pt-0.5 pb-0.5 flex items-center justify-between text-[7px] sm:text-[8px] font-mono tracking-tight text-amber-500/90 bg-black">
+                  <span>{frameNum}</span>
+                  <span className="truncate max-w-[42px] text-[6.5px]">{filter.brand}</span>
                 </div>
 
-                {/* Filter Thumbnail */}
-                <div className="mx-[8px] h-[48px] sm:h-[52px] bg-zinc-900 overflow-hidden relative border border-white/10">
+                {/* Center Photo Thumbnail */}
+                <div className="mx-[13px] sm:mx-[16px] h-[52px] sm:h-[64px] bg-zinc-950 overflow-hidden relative border border-zinc-800">
                   {thumbnails[filter.id] ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -210,29 +227,27 @@ export default function FilmStripSelector({
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-zinc-800">
-                      <span className="text-[8px] text-zinc-400 font-mono">FILM</span>
+                    <div className="w-full h-full flex items-center justify-center bg-zinc-900">
+                      <span className="text-[7.5px] text-zinc-500 font-mono">35MM</span>
                     </div>
                   )}
 
-                  {/* Active highlight corner marker */}
-                  {isSelected && (
-                    <div className="absolute top-0 right-0 w-2 h-2 bg-amber-400 clip-triangle" />
-                  )}
+                  {/* Filter label overlay badge */}
+                  <div className="absolute bottom-0 inset-x-0 bg-black/75 backdrop-blur-xs py-0.5 px-1 text-center">
+                    <span
+                      className={`text-[8px] sm:text-[9px] font-bold tracking-tight uppercase truncate block ${
+                        isSelected ? "text-amber-400 font-black" : "text-zinc-200"
+                      }`}
+                    >
+                      {filter.shortLabel}
+                    </span>
+                  </div>
                 </div>
 
-                {/* Bottom Frame Label & Sub-sprocket code */}
-                <div className="w-full px-2 py-0.5 flex flex-col items-center bg-black">
-                  <span
-                    className={`text-[8.5px] font-bold tracking-tight uppercase truncate max-w-[62px] ${
-                      isSelected ? "text-amber-400 font-black" : "text-zinc-300"
-                    }`}
-                  >
-                    {filter.shortLabel}
-                  </span>
-                  <span className="text-[6px] font-mono text-zinc-600 tracking-tighter">
-                    {frameNumA} • SAFETY
-                  </span>
+                {/* Bottom Film Frame Divider */}
+                <div className="w-full pl-4 pr-4 pt-0.5 pb-0.5 flex items-center justify-between text-[6.5px] sm:text-[7.5px] font-mono tracking-tight text-zinc-500 bg-black">
+                  <span>▶ {frameNumA}</span>
+                  <span>SAFETY</span>
                 </div>
               </div>
             </div>
@@ -240,9 +255,11 @@ export default function FilmStripSelector({
         })}
       </div>
 
-      {/* "WIND FILM" indicator */}
-      <div className="text-[8px] text-amber-500/70 font-mono uppercase tracking-widest text-center mt-1 rotate-0">
-        ▲ WIND FILM ▼
+      {/* Bottom subtle indicator */}
+      <div className="w-full py-1 text-center bg-black/90 border-t border-zinc-900 z-10 flex-shrink-0">
+        <span className="text-[7.5px] font-mono tracking-widest text-zinc-600">
+          ▲ WIND ▼
+        </span>
       </div>
     </div>
   );

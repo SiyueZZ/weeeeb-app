@@ -10,7 +10,7 @@ import {
   Film,
   Layers,
 } from "lucide-react";
-import { FILM_FILTERS, FilmFilterConfig } from "@/lib/filters";
+import { FilmFilterConfig } from "@/lib/filters";
 import {
   renderAnalogPhotoStrip,
   canvasToBlob,
@@ -18,16 +18,15 @@ import {
 
 interface ResultsViewProps {
   rawPhotos: string[];
-  initialFilter: FilmFilterConfig;
-  onRetake: (currentFilter: FilmFilterConfig) => void;
+  activeFilter: FilmFilterConfig;
+  onRetake: () => void;
 }
 
 export default function ResultsView({
   rawPhotos,
-  initialFilter,
+  activeFilter,
   onRetake,
 }: ResultsViewProps) {
-  const [activeFilter, setActiveFilter] = useState<FilmFilterConfig>(initialFilter);
   const [paperColor, setPaperColor] = useState<"white" | "cream">("white");
   const [stripImageUrl, setStripImageUrl] = useState<string | null>(null);
   const [isDeveloping, setIsDeveloping] = useState<boolean>(true);
@@ -80,7 +79,7 @@ export default function ResultsView({
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsDeveloping(false);
-    }, 1500);
+    }, 1400);
     return () => clearTimeout(timer);
   }, []);
 
@@ -139,7 +138,7 @@ export default function ResultsView({
       {/* Top Header - Safe Area */}
       <div className="relative z-20 w-full pt-safe px-4 pb-2.5 flex items-center justify-between bg-[#121214]/90 backdrop-blur-md border-b border-white/10">
         <button
-          onClick={() => onRetake(activeFilter)}
+          onClick={onRetake}
           type="button"
           className="flex items-center gap-1.5 text-xs font-mono font-semibold text-zinc-300 hover:text-white px-3 py-1.5 rounded-full bg-white/10 active:scale-95 transition-all cursor-pointer"
         >
@@ -149,7 +148,7 @@ export default function ResultsView({
 
         <div className="flex items-center gap-1.5 text-amber-400 font-mono">
           <Film className="w-4 h-4" />
-          <span className="text-xs font-black uppercase tracking-widest text-zinc-200">
+          <span className="text-xs font-black uppercase tracking-widest text-zinc-200 truncate max-w-[140px] sm:max-w-none">
             {activeFilter.name}
           </span>
         </div>
@@ -167,12 +166,12 @@ export default function ResultsView({
       </div>
 
       {/* Main Preview Area: Scrollable photo strip with darkroom development effect */}
-      <div className="relative flex-1 w-full overflow-y-auto overscroll-contain px-4 py-4 flex flex-col items-center justify-start scrollbar-none">
+      <div className="relative flex-1 w-full overflow-y-auto overscroll-contain px-3 sm:px-4 py-4 flex flex-col items-center justify-start scrollbar-none">
         {isGenerating ? (
           <div className="my-auto flex flex-col items-center gap-3 text-amber-400 font-mono">
             <div className="w-8 h-8 border-2 border-amber-400/20 border-t-amber-400 rounded-full animate-spin" />
             <span className="text-xs tracking-widest uppercase font-bold">
-              Processing chemical bath...
+              Developing on {activeFilter.shortLabel}...
             </span>
           </div>
         ) : stripImageUrl ? (
@@ -197,76 +196,49 @@ export default function ResultsView({
             <div className="mt-3 flex items-center gap-2 text-[10.5px] text-amber-400 font-mono tracking-wider uppercase">
               <Sparkles className="w-3 h-3" />
               <span>
-                {isDeveloping ? "Developing print..." : "Developed & Fixed • 35mm Format"}
+                {isDeveloping ? "Developing in progress..." : "35mm Analog Print"}
               </span>
             </div>
           </div>
         ) : null}
       </div>
 
-      {/* Film Stock Switcher & Action Footer - Respects Safe Area */}
-      <div className="relative z-20 w-full bg-[#18181b]/95 backdrop-blur-xl border-t border-white/10 px-4 pt-2.5 pb-safe flex flex-col gap-2.5">
-        {/* Horizontal Film Stock Selector */}
-        <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
-          <span className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-tighter flex-shrink-0">
-            FILM:
-          </span>
-          {FILM_FILTERS.map((f) => {
-            const isSelected = f.id === activeFilter.id;
-            return (
-              <button
-                key={f.id}
-                onClick={() => setActiveFilter(f)}
-                type="button"
-                className={`px-3 py-1.5 rounded-full text-xs font-mono font-bold whitespace-nowrap transition-all cursor-pointer ${
-                  isSelected
-                    ? "bg-amber-400 text-black shadow-lg scale-105"
-                    : "bg-white/10 text-zinc-300 hover:bg-white/15"
-                }`}
-              >
-                {f.shortLabel}
-              </button>
-            );
-          })}
-        </div>
+      {/* Bottom Action Buttons - Respects Safe Area */}
+      <div className="relative z-20 w-full bg-[#18181b]/95 backdrop-blur-xl border-t border-white/10 px-4 pt-2.5 pb-safe flex items-center gap-3">
+        {/* Retake Button */}
+        <button
+          onClick={onRetake}
+          type="button"
+          className="flex-1 py-3.5 px-4 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-mono font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-white/10 active:scale-98 transition-all cursor-pointer"
+        >
+          <RotateCcw className="w-4 h-4 text-zinc-400" />
+          <span>Retake</span>
+        </button>
 
-        {/* Primary Action Buttons */}
-        <div className="flex items-center gap-3 pt-0.5">
-          {/* Retake Button */}
-          <button
-            onClick={() => onRetake(activeFilter)}
-            type="button"
-            className="flex-1 py-3.5 px-4 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-mono font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-white/10 active:scale-98 transition-all cursor-pointer"
-          >
-            <RotateCcw className="w-4 h-4 text-zinc-400" />
-            <span>Retake</span>
-          </button>
-
-          {/* Save / Share Button */}
-          <button
-            onClick={handleSave}
-            disabled={isGenerating || isSaving}
-            type="button"
-            className="flex-[2] py-3.5 px-5 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-mono font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl active:scale-98 disabled:opacity-50 transition-all cursor-pointer"
-          >
-            {saveSuccess ? (
-              <>
-                <Check className="w-4 h-4 text-black" />
-                <span>Saved to Photos!</span>
-              </>
-            ) : canWebShare ? (
-              <>
-                <Share2 className="w-4 h-4" />
-                <span>Save to Photos</span>
-              </>
-            ) : (
-              <>
-                <Download className="w-4 h-4" />
-                <span>Download Strip</span>
-              </>
-            )}
-          </button>
-        </div>
+        {/* Save / Share Button */}
+        <button
+          onClick={handleSave}
+          disabled={isGenerating || isSaving}
+          type="button"
+          className="flex-[2] py-3.5 px-5 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-mono font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl active:scale-98 disabled:opacity-50 transition-all cursor-pointer"
+        >
+          {saveSuccess ? (
+            <>
+              <Check className="w-4 h-4 text-black" />
+              <span>Saved to Photos!</span>
+            </>
+          ) : canWebShare ? (
+            <>
+              <Share2 className="w-4 h-4" />
+              <span>Save to Photos</span>
+            </>
+          ) : (
+            <>
+              <Download className="w-4 h-4" />
+              <span>Download Strip</span>
+            </>
+          )}
+        </button>
       </div>
     </div>
   );

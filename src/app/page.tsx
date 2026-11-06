@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import CameraView from "@/components/CameraView";
 import ResultsView from "@/components/ResultsView";
 import CameraDeniedView from "@/components/CameraDeniedView";
+import FilmStripSelector from "@/components/FilmStripSelector";
 import { FILM_FILTERS, FilmFilterConfig } from "@/lib/filters";
 
 type AppStep = "camera" | "results" | "permission_denied";
@@ -14,9 +15,8 @@ export default function PhotoBoothPage() {
   const [selectedFilter, setSelectedFilter] = useState<FilmFilterConfig>(FILM_FILTERS[0]);
   const [errorMessage, setErrorMessage] = useState<string>("");
 
-  const handleCaptureComplete = (capturedRawPhotos: string[], filter: FilmFilterConfig) => {
+  const handleCaptureComplete = (capturedRawPhotos: string[]) => {
     setRawPhotos(capturedRawPhotos);
-    setSelectedFilter(filter);
     setStep("results");
   };
 
@@ -25,9 +25,8 @@ export default function PhotoBoothPage() {
     setStep("permission_denied");
   };
 
-  const handleRetake = (preservedFilter: FilmFilterConfig) => {
+  const handleRetake = () => {
     setRawPhotos([]);
-    setSelectedFilter(preservedFilter);
     setStep("camera");
   };
 
@@ -37,29 +36,40 @@ export default function PhotoBoothPage() {
   };
 
   return (
-    <main className="relative h-full w-full bg-[#121214] overflow-hidden flex flex-col justify-center">
-      {step === "camera" && (
-        <CameraView
-          initialFilter={selectedFilter}
-          onCaptureComplete={handleCaptureComplete}
-          onError={handleCameraError}
+    <div className="flex flex-row h-screen w-screen overflow-hidden bg-black text-white">
+      {/* LEFT COLUMN: Authentic 35mm Continuous Film Strip running from top to bottom */}
+      <aside className="w-[84px] sm:w-[104px] md:w-[130px] h-full flex-shrink-0 bg-black border-r border-zinc-900 z-30">
+        <FilmStripSelector
+          selectedFilter={selectedFilter}
+          onSelectFilter={setSelectedFilter}
         />
-      )}
+      </aside>
 
-      {step === "results" && (
-        <ResultsView
-          rawPhotos={rawPhotos}
-          initialFilter={selectedFilter}
-          onRetake={handleRetake}
-        />
-      )}
+      {/* RIGHT COLUMN: "PHOTO HERE" - Main Viewfinder & Developing Area */}
+      <main className="flex-1 h-full relative flex flex-col justify-between overflow-hidden bg-black">
+        {step === "camera" && (
+          <CameraView
+            selectedFilter={selectedFilter}
+            onCaptureComplete={handleCaptureComplete}
+            onError={handleCameraError}
+          />
+        )}
 
-      {step === "permission_denied" && (
-        <CameraDeniedView
-          onRetry={handleRetryPermission}
-          errorMessage={errorMessage}
-        />
-      )}
-    </main>
+        {step === "results" && (
+          <ResultsView
+            rawPhotos={rawPhotos}
+            activeFilter={selectedFilter}
+            onRetake={handleRetake}
+          />
+        )}
+
+        {step === "permission_denied" && (
+          <CameraDeniedView
+            onRetry={handleRetryPermission}
+            errorMessage={errorMessage}
+          />
+        )}
+      </main>
+    </div>
   );
 }

@@ -1,20 +1,19 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { SwitchCamera, Volume2, VolumeX, Sparkles, Film, Image as ImageIcon } from "lucide-react";
-import { FilmFilterConfig, FILM_FILTERS } from "@/lib/filters";
+import { SwitchCamera, Volume2, VolumeX, Film, Image as ImageIcon } from "lucide-react";
+import { FilmFilterConfig } from "@/lib/filters";
 import { WebGLFilmPipeline } from "@/lib/webglPipeline";
-import FilmStripSelector from "./FilmStripSelector";
 import { playCountdownBeep, playShutterSound } from "@/lib/audio";
 
 interface CameraViewProps {
-  initialFilter: FilmFilterConfig;
-  onCaptureComplete: (rawPhotos: string[], selectedFilter: FilmFilterConfig) => void;
+  selectedFilter: FilmFilterConfig;
+  onCaptureComplete: (rawPhotos: string[]) => void;
   onError: (error: string) => void;
 }
 
 export default function CameraView({
-  initialFilter,
+  selectedFilter,
   onCaptureComplete,
   onError,
 }: CameraViewProps) {
@@ -25,7 +24,6 @@ export default function CameraView({
   const pipelineRef = useRef<WebGLFilmPipeline | null>(null);
   const animFrameRef = useRef<number | null>(null);
 
-  const [selectedFilter, setSelectedFilter] = useState<FilmFilterConfig>(initialFilter);
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
   const [useSamplePhoto, setUseSamplePhoto] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -37,13 +35,22 @@ export default function CameraView({
   const [showFilterBanner, setShowFilterBanner] = useState(false);
   const bannerTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Preload sample image for instant live testing
+  // Preload sample image
   useEffect(() => {
     const img = new Image();
     img.src = "/sample-portrait.jpg";
     img.crossOrigin = "anonymous";
     sampleImgRef.current = img;
   }, []);
+
+  // Flash filter banner when filter changes
+  useEffect(() => {
+    setShowFilterBanner(true);
+    if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+    bannerTimerRef.current = setTimeout(() => {
+      setShowFilterBanner(false);
+    }, 2000);
+  }, [selectedFilter.id]);
 
   // Stop camera tracks cleanly
   const stopStream = useCallback(() => {
@@ -90,7 +97,7 @@ export default function CameraView({
     };
   }, [startCamera, stopStream, useSamplePhoto]);
 
-  // Initialize and run real-time WebGL render loop
+  // Real-time WebGL render loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -138,16 +145,6 @@ export default function CameraView({
     };
   }, [selectedFilter, facingMode, useSamplePhoto]);
 
-  // When user changes filter, show animated top banner
-  const handleSelectFilter = (filter: FilmFilterConfig) => {
-    setSelectedFilter(filter);
-    setShowFilterBanner(true);
-    if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
-    bannerTimerRef.current = setTimeout(() => {
-      setShowFilterBanner(false);
-    }, 2200);
-  };
-
   // Grab raw uncompressed frame
   const grabRawFrame = useCallback((): string | null => {
     if (useSamplePhoto && sampleImgRef.current) {
@@ -178,7 +175,7 @@ export default function CameraView({
     return c.toDataURL("image/jpeg", 0.95);
   }, [facingMode, useSamplePhoto]);
 
-  // Sequence shutter click: shoots 4 photos in sequence
+  // Shutter click sequence: 4 photos
   const handleShutterClick = async () => {
     if (isCapturing) return;
     setIsCapturing(true);
@@ -213,7 +210,6 @@ export default function CameraView({
         playShutterSound();
       }
 
-      // Grab raw photo at exact flash instant
       const rawPhoto = grabRawFrame();
       if (rawPhoto) {
         rawPhotos.push(rawPhoto);
@@ -231,7 +227,7 @@ export default function CameraView({
     await sleep(400);
 
     stopStream();
-    onCaptureComplete(rawPhotos, selectedFilter);
+    onCaptureComplete(rawPhotos);
   };
 
   const toggleCameraFacing = () => {
@@ -240,7 +236,7 @@ export default function CameraView({
   };
 
   return (
-    <div className="relative h-full w-full bg-[#121214] overflow-hidden flex flex-col justify-between select-none">
+    <div className="relative h-full w-full flex flex-col justify-between overflow-hidden bg-black select-none">
       {/* Hidden native video source */}
       <video
         ref={videoRef}
@@ -250,19 +246,19 @@ export default function CameraView({
         className="hidden"
       />
 
-      {/* Full-Screen WebGL Live Shader Viewfinder */}
+      {/* Main "PHOTO HERE" WebGL Viewfinder */}
       <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden">
         <canvas
           ref={canvasRef}
           className="h-full w-full object-cover block"
         />
 
-        {/* Viewfinder Frame Overlay */}
-        <div className="absolute inset-2 sm:inset-4 pointer-events-none border border-white/10 rounded-2xl" />
+        {/* Viewfinder Frame Accent */}
+        <div className="absolute inset-2 sm:inset-4 pointer-events-none border border-white/10 rounded-xl" />
 
-        {/* Disposable Camera Live Date Stamp in bottom-right */}
+        {/* Disposable Camera Date Stamp */}
         {selectedFilter.dateStamp && (
-          <div className="absolute bottom-28 right-5 pointer-events-none font-mono text-sm sm:text-base font-bold text-[#ffaa00] drop-shadow-[0_0_8px_rgba(255,106,0,0.8)] tracking-widest z-10">
+          <div className="absolute bottom-24 right-5 pointer-events-none font-mono text-sm sm:text-base font-bold text-[#ffaa00] drop-shadow-[0_0_8px_rgba(255,106,0,0.8)] tracking-widest z-10">
             {`'${(new Date().getFullYear() % 100).toString().padStart(2, "0")}  ${(new Date().getMonth() + 1).toString().padStart(2, "0")}  ${new Date().getDate().toString().padStart(2, "0")}`}
           </div>
         )}
@@ -273,14 +269,14 @@ export default function CameraView({
         <div className="fixed inset-0 bg-white z-50 pointer-events-none animate-flash" />
       )}
 
-      {/* Top Bar - Safe area aware */}
-      <div className="relative z-20 w-full pt-safe px-4 flex items-center justify-between text-white drop-shadow-md">
-        {/* Sound toggle button */}
+      {/* Top Header Controls Bar */}
+      <div className="relative z-20 w-full pt-safe px-4 pb-2 flex items-center justify-between text-white drop-shadow-md">
+        {/* Sound Toggle */}
         <button
           onClick={() => setSoundEnabled(!soundEnabled)}
           type="button"
           aria-label={soundEnabled ? "Mute sounds" : "Enable sounds"}
-          className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/15 flex items-center justify-center active:scale-95 transition-all cursor-pointer"
+          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/15 flex items-center justify-center active:scale-95 transition-all cursor-pointer"
         >
           {soundEnabled ? (
             <Volume2 className="w-4 h-4 text-white" />
@@ -290,7 +286,7 @@ export default function CameraView({
         </button>
 
         {/* Shot progress / Active Filter indicator */}
-        <div className="px-3 py-1.5 rounded-full bg-black/65 backdrop-blur-md border border-white/20 flex items-center gap-2">
+        <div className="px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-md border border-white/20 flex items-center gap-2">
           {isCapturing ? (
             <div className="flex items-center gap-1.5">
               {[1, 2, 3, 4].map((i) => (
@@ -319,14 +315,14 @@ export default function CameraView({
           )}
         </div>
 
-        {/* Right controls: Sample photo toggle + Camera flip */}
-        <div className="flex items-center gap-2">
+        {/* Right Controls: Sample Photo Toggle + Camera Flip */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             onClick={() => setUseSamplePhoto(!useSamplePhoto)}
             type="button"
             aria-label="Toggle sample portrait"
             title="Toggle between live camera and reference sample"
-            className={`w-10 h-10 rounded-full backdrop-blur-md border flex items-center justify-center active:scale-95 transition-all cursor-pointer ${
+            className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full backdrop-blur-md border flex items-center justify-center active:scale-95 transition-all cursor-pointer ${
               useSamplePhoto
                 ? "bg-amber-500/80 border-amber-400 text-black shadow-lg"
                 : "bg-black/60 border-white/15 text-white"
@@ -340,59 +336,44 @@ export default function CameraView({
             disabled={isCapturing || useSamplePhoto}
             type="button"
             aria-label="Flip camera"
-            className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/15 flex items-center justify-center active:scale-95 disabled:opacity-40 transition-all cursor-pointer"
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/15 flex items-center justify-center active:scale-95 disabled:opacity-40 transition-all cursor-pointer"
           >
             <SwitchCamera className="w-4 h-4 text-white" />
           </button>
         </div>
       </div>
 
-      {/* Filter Name Fade-In Notification Banner near top */}
-      <div className="relative z-20 w-full flex justify-center pointer-events-none mt-2 px-4 min-h-[32px]">
+      {/* Filter Notification Banner */}
+      <div className="relative z-20 w-full flex justify-center pointer-events-none px-4 min-h-[30px]">
         {showFilterBanner && (
           <div className="px-4 py-1.5 rounded-full bg-black/80 backdrop-blur-lg border border-amber-400/40 text-amber-400 text-xs font-mono tracking-wider font-bold shadow-xl animate-in fade-in zoom-in-95 duration-200">
-            🎞️ {selectedFilter.brand} {selectedFilter.name.toUpperCase()} • {selectedFilter.year || "35MM"}
+            🎞️ {selectedFilter.brand} {selectedFilter.name.toUpperCase()}
           </div>
         )}
       </div>
 
-      {/* Middle Center: 35mm Film Strip Selector on the LEFT, Countdown in CENTER */}
-      <div className="relative z-20 flex-1 flex items-center justify-between px-3 w-full">
-        {/* Left Edge: 35mm Film Strip Selector */}
-        <div className="flex-shrink-0">
-          <FilmStripSelector
-            selectedFilter={selectedFilter}
-            onSelectFilter={handleSelectFilter}
-            disabled={isCapturing}
-          />
-        </div>
+      {/* Center Countdown Display */}
+      <div className="relative z-20 flex-1 flex flex-col items-center justify-center pointer-events-none">
+        {countdown !== null && (
+          <div
+            key={countdown}
+            className="animate-countdown font-black text-8xl md:text-9xl text-white drop-shadow-[0_4px_30px_rgba(0,0,0,0.9)]"
+            style={{
+              textShadow: "0 0 30px rgba(251,146,60,0.8), 0 4px 20px rgba(0,0,0,0.9)",
+            }}
+          >
+            {countdown}
+          </div>
+        )}
 
-        {/* Center Countdown & Pose Hints */}
-        <div className="flex-1 flex flex-col items-center justify-center pointer-events-none">
-          {countdown !== null && (
-            <div
-              key={countdown}
-              className="animate-countdown font-black text-8xl md:text-9xl text-white drop-shadow-[0_4px_30px_rgba(0,0,0,0.9)]"
-              style={{
-                textShadow: "0 0 30px rgba(251,146,60,0.8), 0 4px 20px rgba(0,0,0,0.9)",
-              }}
-            >
-              {countdown}
-            </div>
-          )}
-
-          {statusMessage && countdown === null && (
-            <div className="px-5 py-2.5 rounded-full bg-black/80 backdrop-blur-md border border-amber-400/40 text-white font-medium text-sm tracking-wide drop-shadow-xl animate-pulse">
-              {statusMessage}
-            </div>
-          )}
-        </div>
-
-        {/* Right spacing balance */}
-        <div className="w-[82px] sm:w-[88px] flex-shrink-0 pointer-events-none" />
+        {statusMessage && countdown === null && (
+          <div className="px-5 py-2.5 rounded-full bg-black/80 backdrop-blur-md border border-amber-400/40 text-white font-medium text-sm tracking-wide drop-shadow-xl animate-pulse">
+            {statusMessage}
+          </div>
+        )}
       </div>
 
-      {/* Bottom Controls Bar - Respects Safe Area */}
+      {/* Bottom Shutter Area */}
       <div className="relative z-20 w-full pb-safe pt-2 px-6 flex flex-col items-center">
         {/* Big Round Retro Shutter Button */}
         <div className="relative flex items-center justify-center mb-2">
@@ -401,14 +382,14 @@ export default function CameraView({
             disabled={isCapturing}
             type="button"
             aria-label="Take 4 photos"
-            className="group relative w-20 h-20 rounded-full flex items-center justify-center active:scale-95 disabled:opacity-50 transition-all duration-150 cursor-pointer focus:outline-none"
+            className="group relative w-18 h-18 sm:w-20 sm:h-20 rounded-full flex items-center justify-center active:scale-95 disabled:opacity-50 transition-all duration-150 cursor-pointer focus:outline-none"
           >
             {/* Outer White / Amber Ring */}
             <span className="absolute inset-0 rounded-full border-4 border-white/90 shadow-2xl transition-transform duration-200 group-hover:scale-105 group-active:scale-95" />
 
             {/* Inner Shutter Circle */}
             <span
-              className={`w-[62px] h-[62px] rounded-full transition-all duration-150 ${
+              className={`w-[54px] h-[54px] sm:w-[62px] sm:h-[62px] rounded-full transition-all duration-150 ${
                 isCapturing
                   ? "bg-amber-500 scale-75 rounded-lg"
                   : "bg-white group-active:scale-90"
@@ -418,7 +399,7 @@ export default function CameraView({
         </div>
 
         {/* Shutter instruction hint */}
-        <p className="text-[10.5px] text-zinc-400 font-mono tracking-wider uppercase text-center pb-1">
+        <p className="text-[10px] sm:text-[11px] text-zinc-400 font-mono tracking-wider uppercase text-center pb-1">
           {isCapturing ? "HOLD STILL FOR 4 FRAMES" : "TAP SHUTTER FOR 4-SHOT FILM STRIP"}
         </p>
       </div>
