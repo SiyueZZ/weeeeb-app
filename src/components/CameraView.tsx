@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { SwitchCamera, Volume2, VolumeX, Film, Image as ImageIcon } from "lucide-react";
-import { FilmFilterConfig } from "@/lib/filters";
+import { FilmFilterConfig, FILM_FILTERS } from "@/lib/filters";
 import { WebGLFilmPipeline } from "@/lib/webglPipeline";
 import { playCountdownBeep, playShutterSound } from "@/lib/audio";
 
@@ -17,6 +17,8 @@ export default function CameraView({
   onCaptureComplete,
   onError,
 }: CameraViewProps) {
+  const activeFilter = selectedFilter || FILM_FILTERS[0];
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const sampleImgRef = useRef<HTMLImageElement | null>(null);
@@ -45,12 +47,13 @@ export default function CameraView({
 
   // Flash filter banner when filter changes
   useEffect(() => {
+    if (!activeFilter) return;
     setShowFilterBanner(true);
     if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
     bannerTimerRef.current = setTimeout(() => {
       setShowFilterBanner(false);
     }, 2000);
-  }, [selectedFilter.id]);
+  }, [activeFilter.id]);
 
   // Stop camera tracks cleanly
   const stopStream = useCallback(() => {
@@ -122,11 +125,11 @@ export default function CameraView({
 
       if (pipeline) {
         if (useSamplePhoto && sampleImgRef.current && sampleImgRef.current.complete) {
-          pipeline.render(sampleImgRef.current, selectedFilter, false);
+          pipeline.render(sampleImgRef.current, activeFilter, false);
         } else {
           const video = videoRef.current;
           if (video && video.readyState >= 2) {
-            pipeline.render(video, selectedFilter, facingMode === "user");
+            pipeline.render(video, activeFilter, facingMode === "user");
           }
         }
       }
@@ -143,7 +146,7 @@ export default function CameraView({
         pipelineRef.current = null;
       }
     };
-  }, [selectedFilter, facingMode, useSamplePhoto]);
+  }, [activeFilter, facingMode, useSamplePhoto]);
 
   // Grab raw uncompressed frame
   const grabRawFrame = useCallback((): string | null => {
@@ -257,7 +260,7 @@ export default function CameraView({
         <div className="absolute inset-2 sm:inset-4 pointer-events-none border border-white/10 rounded-xl" />
 
         {/* Disposable Camera Date Stamp */}
-        {selectedFilter.dateStamp && (
+        {activeFilter.dateStamp && (
           <div className="absolute bottom-24 right-5 pointer-events-none font-mono text-sm sm:text-base font-bold text-[#ffaa00] drop-shadow-[0_0_8px_rgba(255,106,0,0.8)] tracking-widest z-10">
             {`'${(new Date().getFullYear() % 100).toString().padStart(2, "0")}  ${(new Date().getMonth() + 1).toString().padStart(2, "0")}  ${new Date().getDate().toString().padStart(2, "0")}`}
           </div>
@@ -309,7 +312,7 @@ export default function CameraView({
             <div className="flex items-center gap-1.5">
               <Film className="w-3.5 h-3.5 text-amber-400" />
               <span className="text-xs font-black tracking-widest uppercase text-white/90">
-                {selectedFilter.shortLabel}
+                {activeFilter.shortLabel}
               </span>
             </div>
           )}
@@ -347,7 +350,7 @@ export default function CameraView({
       <div className="relative z-20 w-full flex justify-center pointer-events-none px-4 min-h-[30px]">
         {showFilterBanner && (
           <div className="px-4 py-1.5 rounded-full bg-black/80 backdrop-blur-lg border border-amber-400/40 text-amber-400 text-xs font-mono tracking-wider font-bold shadow-xl animate-in fade-in zoom-in-95 duration-200">
-            🎞️ {selectedFilter.brand} {selectedFilter.name.toUpperCase()}
+            🎞️ {activeFilter.brand} {activeFilter.name.toUpperCase()}
           </div>
         )}
       </div>
