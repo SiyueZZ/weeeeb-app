@@ -7,29 +7,38 @@ import {
   Download,
   Check,
   Sparkles,
-  SlidersHorizontal,
+  Film,
+  Layers,
 } from "lucide-react";
+import { FILM_FILTERS, FilmFilterConfig } from "@/lib/filters";
 import {
-  renderPhotoStrip,
+  renderAnalogPhotoStrip,
   canvasToBlob,
-  StripFilter,
 } from "@/lib/photoStrip";
 
 interface ResultsViewProps {
-  photos: string[];
-  onRetake: () => void;
+  rawPhotos: string[];
+  initialFilter: FilmFilterConfig;
+  onRetake: (currentFilter: FilmFilterConfig) => void;
 }
 
-export default function ResultsView({ photos, onRetake }: ResultsViewProps) {
-  const [filter, setFilter] = useState<StripFilter>("original");
+export default function ResultsView({
+  rawPhotos,
+  initialFilter,
+  onRetake,
+}: ResultsViewProps) {
+  const [activeFilter, setActiveFilter] = useState<FilmFilterConfig>(initialFilter);
+  const [paperColor, setPaperColor] = useState<"white" | "cream">("white");
   const [stripImageUrl, setStripImageUrl] = useState<string | null>(null);
+  const [isDeveloping, setIsDeveloping] = useState<boolean>(true);
   const [isGenerating, setIsGenerating] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const [canWebShare, setCanWebShare] = useState<boolean>(false);
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Detect if device supports sharing files via navigator.share
+  // Detect file-sharing support
   useEffect(() => {
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
       try {
@@ -43,31 +52,39 @@ export default function ResultsView({ photos, onRetake }: ResultsViewProps) {
     }
   }, []);
 
-  // Generate canvas & data URL whenever photos or filter changes
+  // Generate strip whenever rawPhotos, activeFilter, or paperColor changes
   const generateStrip = useCallback(async () => {
     setIsGenerating(true);
     try {
-      const canvas = await renderPhotoStrip({
-        photos,
-        filter,
+      const canvas = await renderAnalogPhotoStrip({
+        rawPhotos,
+        filter: activeFilter,
+        paperColor,
         timestamp: new Date(),
-        customText: "PHOTO BOOTH",
       });
       canvasRef.current = canvas;
       const dataUrl = canvas.toDataURL("image/png");
       setStripImageUrl(dataUrl);
     } catch (err) {
-      console.error("Failed to render strip:", err);
+      console.error("Error developing photo strip:", err);
     } finally {
       setIsGenerating(false);
     }
-  }, [photos, filter]);
+  }, [rawPhotos, activeFilter, paperColor]);
 
   useEffect(() => {
     generateStrip();
   }, [generateStrip]);
 
-  // Handle Save (opens native share sheet on mobile, downloads on laptop)
+  // Darkroom developing animation on initial load
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsDeveloping(false);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Save / Share handler
   const handleSave = async () => {
     if (!canvasRef.current || isSaving) return;
     setIsSaving(true);
@@ -77,158 +94,149 @@ export default function ResultsView({ photos, onRetake }: ResultsViewProps) {
       if (!blob) throw new Error("Could not create image blob");
 
       const dateStr = new Date().toISOString().slice(0, 10);
-      const fileName = `photobooth-strip-${dateStr}-${Date.now().toString().slice(-4)}.png`;
+      const fileName = `${activeFilter.id}-strip-${dateStr}-${Date.now().toString().slice(-4)}.png`;
       const file = new File([blob], fileName, { type: "image/png" });
 
-      // On iPhone / mobile with file sharing support:
       if (canWebShare && navigator.canShare && navigator.canShare({ files: [file] })) {
         try {
           await navigator.share({
             files: [file],
-            title: "Photo Booth Strip",
-            text: "My photo booth strip!",
+            title: `35mm ${activeFilter.name} Photo Strip`,
+            text: "My vintage analog photo strip!",
           });
           setSaveSuccess(true);
           setTimeout(() => setSaveSuccess(false), 2500);
           return;
         } catch (shareErr: unknown) {
-          // If user simply closed/cancelled the share sheet, don't force a fallback download
           if (shareErr instanceof Error && shareErr.name === "AbortError") {
             return;
           }
-          console.warn("Share failed, falling back to download:", shareErr);
+          console.warn("Share sheet closed or failed, fallback to download:", shareErr);
         }
       }
 
-      // Laptop or fallback: direct download
-      triggerDownload(blob, fileName);
+      // Fallback: Direct image download
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
     } catch (err) {
-      console.error("Error saving image:", err);
+      console.error("Save error:", err);
     } finally {
       setIsSaving(false);
     }
   };
 
-  const triggerDownload = (blob: Blob, fileName: string) => {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const filters: { id: StripFilter; label: string }[] = [
-    { id: "original", label: "Classic" },
-    { id: "bw", label: "B&W Noir" },
-    { id: "warm", label: "Warm Film" },
-    { id: "cool", label: "Cool Retro" },
-  ];
-
   return (
-    <div className="relative h-full w-full bg-zinc-950 text-white flex flex-col justify-between overflow-hidden select-none">
+    <div className="relative h-full w-full bg-[#121214] text-white flex flex-col justify-between overflow-hidden select-none">
       {/* Top Header - Safe Area */}
-      <div className="relative z-20 w-full pt-safe px-5 pb-3 flex items-center justify-between bg-zinc-950/80 backdrop-blur-md border-b border-white/10">
+      <div className="relative z-20 w-full pt-safe px-4 pb-2.5 flex items-center justify-between bg-[#121214]/90 backdrop-blur-md border-b border-white/10">
         <button
-          onClick={onRetake}
+          onClick={() => onRetake(activeFilter)}
           type="button"
-          className="flex items-center gap-1.5 text-xs font-semibold text-zinc-300 hover:text-white px-3 py-1.5 rounded-full bg-white/10 active:scale-95 transition-all cursor-pointer"
+          className="flex items-center gap-1.5 text-xs font-mono font-semibold text-zinc-300 hover:text-white px-3 py-1.5 rounded-full bg-white/10 active:scale-95 transition-all cursor-pointer"
         >
           <RotateCcw className="w-3.5 h-3.5" />
           <span>Retake</span>
         </button>
 
-        <div className="flex items-center gap-1.5 text-zinc-200">
-          <Sparkles className="w-4 h-4 text-amber-400" />
-          <span className="text-xs font-bold uppercase tracking-widest">
-            Photo Strip
+        <div className="flex items-center gap-1.5 text-amber-400 font-mono">
+          <Film className="w-4 h-4" />
+          <span className="text-xs font-black uppercase tracking-widest text-zinc-200">
+            {activeFilter.name}
           </span>
         </div>
 
+        {/* Paper style toggle (White / Cream) */}
         <button
-          onClick={handleSave}
-          disabled={isGenerating || isSaving}
+          onClick={() => setPaperColor(paperColor === "white" ? "cream" : "white")}
           type="button"
-          className="flex items-center gap-1.5 text-xs font-semibold text-black bg-white hover:bg-zinc-200 px-3.5 py-1.5 rounded-full active:scale-95 disabled:opacity-50 transition-all cursor-pointer shadow-md"
+          aria-label="Toggle paper color"
+          className="flex items-center gap-1 text-[11px] font-mono font-semibold px-2.5 py-1.5 rounded-full bg-zinc-800 border border-white/10 text-zinc-300 active:scale-95 transition-all cursor-pointer"
         >
-          {saveSuccess ? (
-            <>
-              <Check className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Done!</span>
-            </>
-          ) : canWebShare ? (
-            <>
-              <Share2 className="w-3.5 h-3.5" />
-              <span>Share</span>
-            </>
-          ) : (
-            <>
-              <Download className="w-3.5 h-3.5" />
-              <span>Save</span>
-            </>
-          )}
+          <Layers className="w-3 h-3 text-amber-400" />
+          <span>{paperColor === "white" ? "White" : "Cream"}</span>
         </button>
       </div>
 
-      {/* Main Preview Area: Scrollable photo strip */}
-      <div className="relative flex-1 w-full overflow-y-auto overscroll-contain px-4 py-5 flex flex-col items-center justify-start scrollbar-none">
+      {/* Main Preview Area: Scrollable photo strip with darkroom development effect */}
+      <div className="relative flex-1 w-full overflow-y-auto overscroll-contain px-4 py-4 flex flex-col items-center justify-start scrollbar-none">
         {isGenerating ? (
-          <div className="my-auto flex flex-col items-center gap-3 text-zinc-400">
-            <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-            <span className="text-xs tracking-wider uppercase font-medium">
-              Developing your strip...
+          <div className="my-auto flex flex-col items-center gap-3 text-amber-400 font-mono">
+            <div className="w-8 h-8 border-2 border-amber-400/20 border-t-amber-400 rounded-full animate-spin" />
+            <span className="text-xs tracking-widest uppercase font-bold">
+              Processing chemical bath...
             </span>
           </div>
         ) : stripImageUrl ? (
-          <div className="flex flex-col items-center max-w-xs sm:max-w-sm w-full transition-transform duration-300 animate-in fade-in zoom-in-95">
-            {/* The Vertical Photo Strip with White Border */}
-            <div className="relative rounded-lg overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.85)] border border-white/20 bg-white">
+          <div className="flex flex-col items-center max-w-xs sm:max-w-sm w-full my-auto transition-all duration-700 ease-out">
+            {/* The Vertical Analog Strip with developing transition */}
+            <div
+              className={`relative rounded-md overflow-hidden shadow-[0_22px_60px_rgba(0,0,0,0.95)] border border-white/20 transition-all duration-1000 ${
+                isDeveloping
+                  ? "brightness-40 contrast-125 sepia blur-[1.5px]"
+                  : "brightness-100 contrast-100 sepia-0 blur-0"
+              }`}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={stripImageUrl}
-                alt="Your 4-Shot Photo Booth Strip"
+                alt="Your 35mm Analog Photo Booth Strip"
                 className="w-full h-auto block"
               />
             </div>
-            <p className="mt-3 text-[11px] text-zinc-500 tracking-wider uppercase font-mono">
-              ✦ Tap Save below to add to Photos ✦
-            </p>
+
+            {/* Development badge */}
+            <div className="mt-3 flex items-center gap-2 text-[10.5px] text-amber-400 font-mono tracking-wider uppercase">
+              <Sparkles className="w-3 h-3" />
+              <span>
+                {isDeveloping ? "Developing print..." : "Developed & Fixed • 35mm Format"}
+              </span>
+            </div>
           </div>
         ) : null}
       </div>
 
-      {/* Filter Selector & Bottom Controls - Respects Safe Area */}
-      <div className="relative z-20 w-full bg-zinc-950/90 backdrop-blur-xl border-t border-white/10 px-5 pt-3 pb-safe flex flex-col gap-3">
-        {/* Filter Pills */}
-        <div className="flex items-center justify-center gap-2 overflow-x-auto py-1 scrollbar-none">
-          <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500 mr-1 flex-shrink-0" />
-          {filters.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setFilter(item.id)}
-              type="button"
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                filter === item.id
-                  ? "bg-white text-black shadow-md scale-105"
-                  : "bg-white/10 text-zinc-300 hover:bg-white/15"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
+      {/* Film Stock Switcher & Action Footer - Respects Safe Area */}
+      <div className="relative z-20 w-full bg-[#18181b]/95 backdrop-blur-xl border-t border-white/10 px-4 pt-2.5 pb-safe flex flex-col gap-2.5">
+        {/* Horizontal Film Stock Selector */}
+        <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
+          <span className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-tighter flex-shrink-0">
+            FILM:
+          </span>
+          {FILM_FILTERS.map((f) => {
+            const isSelected = f.id === activeFilter.id;
+            return (
+              <button
+                key={f.id}
+                onClick={() => setActiveFilter(f)}
+                type="button"
+                className={`px-3 py-1.5 rounded-full text-xs font-mono font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  isSelected
+                    ? "bg-amber-400 text-black shadow-lg scale-105"
+                    : "bg-white/10 text-zinc-300 hover:bg-white/15"
+                }`}
+              >
+                {f.shortLabel}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Primary Bottom Actions */}
-        <div className="flex items-center gap-3 pt-1">
+        {/* Primary Action Buttons */}
+        <div className="flex items-center gap-3 pt-0.5">
           {/* Retake Button */}
           <button
-            onClick={onRetake}
+            onClick={() => onRetake(activeFilter)}
             type="button"
-            className="flex-1 py-3.5 px-4 rounded-2xl bg-zinc-800/90 hover:bg-zinc-800 text-zinc-100 font-semibold text-sm flex items-center justify-center gap-2 border border-white/10 active:scale-98 transition-all cursor-pointer"
+            className="flex-1 py-3.5 px-4 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-mono font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-white/10 active:scale-98 transition-all cursor-pointer"
           >
             <RotateCcw className="w-4 h-4 text-zinc-400" />
             <span>Retake</span>
@@ -239,11 +247,11 @@ export default function ResultsView({ photos, onRetake }: ResultsViewProps) {
             onClick={handleSave}
             disabled={isGenerating || isSaving}
             type="button"
-            className="flex-[2] py-3.5 px-5 rounded-2xl bg-white hover:bg-zinc-100 text-black font-bold text-sm flex items-center justify-center gap-2 shadow-xl active:scale-98 disabled:opacity-50 transition-all cursor-pointer"
+            className="flex-[2] py-3.5 px-5 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-mono font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl active:scale-98 disabled:opacity-50 transition-all cursor-pointer"
           >
             {saveSuccess ? (
               <>
-                <Check className="w-4 h-4 text-emerald-600" />
+                <Check className="w-4 h-4 text-black" />
                 <span>Saved to Photos!</span>
               </>
             ) : canWebShare ? (

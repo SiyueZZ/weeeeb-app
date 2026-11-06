@@ -4,16 +4,19 @@ import React, { useState } from "react";
 import CameraView from "@/components/CameraView";
 import ResultsView from "@/components/ResultsView";
 import CameraDeniedView from "@/components/CameraDeniedView";
+import { FILM_FILTERS, FilmFilterConfig } from "@/lib/filters";
 
 type AppStep = "camera" | "results" | "permission_denied";
 
 export default function PhotoBoothPage() {
   const [step, setStep] = useState<AppStep>("camera");
-  const [photos, setPhotos] = useState<string[]>([]);
+  const [rawPhotos, setRawPhotos] = useState<string[]>([]);
+  const [selectedFilter, setSelectedFilter] = useState<FilmFilterConfig>(FILM_FILTERS[0]);
   const [errorMessage, setErrorMessage] = useState<string>("");
 
-  const handleCaptureComplete = (capturedPhotos: string[]) => {
-    setPhotos(capturedPhotos);
+  const handleCaptureComplete = (capturedRawPhotos: string[], filter: FilmFilterConfig) => {
+    setRawPhotos(capturedRawPhotos);
+    setSelectedFilter(filter);
     setStep("results");
   };
 
@@ -22,8 +25,9 @@ export default function PhotoBoothPage() {
     setStep("permission_denied");
   };
 
-  const handleRetake = () => {
-    setPhotos([]);
+  const handleRetake = (preservedFilter: FilmFilterConfig) => {
+    setRawPhotos([]);
+    setSelectedFilter(preservedFilter);
     setStep("camera");
   };
 
@@ -33,16 +37,21 @@ export default function PhotoBoothPage() {
   };
 
   return (
-    <main className="relative h-full w-full bg-black overflow-hidden flex flex-col justify-center">
+    <main className="relative h-full w-full bg-[#121214] overflow-hidden flex flex-col justify-center">
       {step === "camera" && (
         <CameraView
+          initialFilter={selectedFilter}
           onCaptureComplete={handleCaptureComplete}
           onError={handleCameraError}
         />
       )}
 
       {step === "results" && (
-        <ResultsView photos={photos} onRetake={handleRetake} />
+        <ResultsView
+          rawPhotos={rawPhotos}
+          initialFilter={selectedFilter}
+          onRetake={handleRetake}
+        />
       )}
 
       {step === "permission_denied" && (

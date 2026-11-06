@@ -1,15 +1,14 @@
-export type StripFilter = "original" | "bw" | "warm" | "cool";
+import { FilmFilterConfig } from "./filters";
+import { renderFilteredImage } from "./webglPipeline";
 
-export interface PhotoStripOptions {
-  photos: string[]; // 4 data URLs or image URLs
-  filter?: StripFilter;
+export interface AnalogPhotoStripOptions {
+  rawPhotos: string[]; // 4 unfiltered source photos
+  filter: FilmFilterConfig;
+  paperColor?: "white" | "cream";
   timestamp?: Date;
-  customText?: string;
+  customTitle?: string;
 }
 
-/**
- * Creates an HTMLImageElement from a src URL
- */
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -21,120 +20,93 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 /**
- * Renders the 4 photos into a classic vertical photo strip with a white border onto an HTMLCanvasElement
+ * Synthesizes a high-resolution vertical film / photobooth strip with the chosen filter and paper style
  */
-export async function renderPhotoStrip(
-  options: PhotoStripOptions
+export async function renderAnalogPhotoStrip(
+  options: AnalogPhotoStripOptions
 ): Promise<HTMLCanvasElement> {
   const {
-    photos,
-    filter = "original",
+    rawPhotos,
+    filter,
+    paperColor = "white",
     timestamp = new Date(),
-    customText = "PHOTO BOOTH",
+    customTitle,
   } = options;
 
-  // Strip layout dimensions (crisp high-DPI)
-  const stripWidth = 800;
-  const paddingX = 42;
-  const paddingTop = 46;
+  // High-resolution strip canvas dimensions
+  const stripWidth = 900;
+  const paddingX = 48;
+  const paddingTop = 52;
   const gapY = 32;
-  const paddingBottom = 160;
+  const paddingBottom = 190;
 
-  const photoWidth = stripWidth - paddingX * 2; // 716px
-  const photoHeight = Math.round(photoWidth * (3 / 4)); // 537px (classic 4:3 photo)
+  const photoWidth = stripWidth - paddingX * 2; // 804px
+  const photoHeight = Math.round(photoWidth * (3 / 4)); // 603px (classic 4:3)
 
-  const totalPhotos = Math.min(photos.length, 4);
+  const count = Math.min(rawPhotos.length, 4);
   const stripHeight =
     paddingTop +
-    photoHeight * totalPhotos +
-    gapY * Math.max(0, totalPhotos - 1) +
+    photoHeight * count +
+    gapY * Math.max(0, count - 1) +
     paddingBottom;
 
-  const canvas = document.createElement("canvas");
-  canvas.width = stripWidth;
-  canvas.height = stripHeight;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) throw new Error("Could not get 2D canvas context");
+  const finalCanvas = document.createElement("canvas");
+  finalCanvas.width = stripWidth;
+  finalCanvas.height = stripHeight;
+  const ctx = finalCanvas.getContext("2d");
+  if (!ctx) throw new Error("Could not create canvas 2D context");
 
-  // Fill classic white border background
-  ctx.fillStyle = "#ffffff";
+  // 1. Paper Background (White or Vintage Warm Cream)
+  const bgColor = paperColor === "cream" ? "#faf6ed" : "#ffffff";
+  ctx.fillStyle = bgColor;
   ctx.fillRect(0, 0, stripWidth, stripHeight);
 
-  // Subtle inner border line for authentic print paper look
-  ctx.strokeStyle = "#f1f1f4";
+  // Subtle paper grain & delicate inner border rule
+  ctx.strokeStyle = paperColor === "cream" ? "rgba(0,0,0,0.06)" : "rgba(0,0,0,0.05)";
   ctx.lineWidth = 1;
-  ctx.strokeRect(8, 8, stripWidth - 16, stripHeight - 16);
+  ctx.strokeRect(10, 10, stripWidth - 20, stripHeight - 20);
 
-  // Load all images in parallel
-  const loadedImages = await Promise.all(photos.map(loadImage));
+  // 2. Load and filter all raw photos through the WebGL pipeline
+  const loadedRawImages = await Promise.all(rawPhotos.map(loadImage));
 
-  // Render each photo
-  for (let i = 0; i < loadedImages.length; i++) {
-    const img = loadedImages[i];
+  for (let i = 0; i < loadedRawImages.length; i++) {
+    const rawImg = loadedRawImages[i];
     const y = paddingTop + i * (photoHeight + gapY);
 
-    // Compute center-crop for 4:3 aspect ratio
-    const imgAspect = img.naturalWidth / img.naturalHeight;
-    const targetAspect = photoWidth / photoHeight;
+    // Apply the active film filter at full photo frame resolution
+    const filteredCanvas = await renderFilteredImage(
+      rawImg,
+      filter,
+      photoWidth,
+      photoHeight,
+      false
+    );
 
-    let sx = 0;
-    let sy = 0;
-    let sw = img.naturalWidth;
-    let sh = img.naturalHeight;
+    // Draw the filtered photo frame
+    ctx.drawImage(filteredCanvas, paddingX, y, photoWidth, photoHeight);
 
-    if (imgAspect > targetAspect) {
-      // Source is wider than 4:3 -> crop left and right
-      sw = img.naturalHeight * targetAspect;
-      sx = (img.naturalWidth - sw) / 2;
-    } else {
-      // Source is taller than 4:3 -> crop top and bottom
-      sh = img.naturalWidth / targetAspect;
-      sy = (img.naturalHeight - sh) / 2;
-    }
-
-    // Save state for filtering
-    ctx.save();
-
-    // Clip to rounded rectangle or sharp clean photo frame
-    ctx.beginPath();
-    ctx.rect(paddingX, y, photoWidth, photoHeight);
-    ctx.clip();
-
-    // Apply CSS filter on context if supported
-    if (filter === "bw") {
-      ctx.filter = "grayscale(100%) contrast(115%) brightness(102%)";
-    } else if (filter === "warm") {
-      ctx.filter = "sepia(25%) saturate(120%) contrast(105%) brightness(102%)";
-    } else if (filter === "cool") {
-      ctx.filter = "hue-rotate(190deg) saturate(90%) contrast(108%)";
-    } else {
-      ctx.filter = "contrast(103%) brightness(101%)";
-    }
-
-    ctx.drawImage(img, sx, sy, sw, sh, paddingX, y, photoWidth, photoHeight);
-
-    // Subtle inner vignette / border on the photo itself
-    ctx.filter = "none";
-    ctx.strokeStyle = "rgba(0, 0, 0, 0.08)";
-    ctx.lineWidth = 1;
+    // Subtle analog darkroom edge border around each frame
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.12)";
+    ctx.lineWidth = 1.5;
     ctx.strokeRect(paddingX, y, photoWidth, photoHeight);
-
-    ctx.restore();
   }
 
-  // --- Footer Typography & Styling ---
-  const footerCenterY = stripHeight - paddingBottom / 2 + 6;
-
-  // Star icons & main title
+  // 3. Typewriter-Style Vintage Strip Footer
+  const footerCenterY = stripHeight - paddingBottom / 2 + 10;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  ctx.fillStyle = "#18181b";
-  ctx.font = "bold 26px -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif";
-  ctx.letterSpacing = "6px";
-  ctx.fillText(`✦  ${customText}  ✦`, stripWidth / 2, footerCenterY - 26);
+  const textColor = paperColor === "cream" ? "#292524" : "#18181b";
+  const subTextColor = paperColor === "cream" ? "#78716c" : "#71717a";
 
-  // Date and Time
+  // Filter Name & Brand in Typewriter Font
+  const displayTitle = customTitle || `${filter.brand} ${filter.name.toUpperCase()}`;
+  ctx.fillStyle = textColor;
+  ctx.font = 'bold 24px "Courier New", Courier, monospace';
+  ctx.letterSpacing = "4px";
+  ctx.fillText(`* ${displayTitle} *`, stripWidth / 2, footerCenterY - 32);
+
+  // Formatted Date & Time
   const dateFormatted = timestamp.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -146,23 +118,20 @@ export async function renderPhotoStrip(
     minute: "2-digit",
   }).toUpperCase();
 
-  ctx.fillStyle = "#71717a";
-  ctx.font = "500 16px -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif";
-  ctx.letterSpacing = "3px";
-  ctx.fillText(`${dateFormatted} • ${timeFormatted}`, stripWidth / 2, footerCenterY + 12);
-
-  // Tiny serial / booth footer mark
-  ctx.fillStyle = "#a1a1aa";
-  ctx.font = "600 11px -apple-system, BlinkMacSystemFont, monospace";
+  ctx.fillStyle = subTextColor;
+  ctx.font = '500 16px "Courier New", Courier, monospace';
   ctx.letterSpacing = "2px";
-  ctx.fillText("4-SHOT STRIP • MEMORIES TO KEEP", stripWidth / 2, footerCenterY + 38);
+  ctx.fillText(`${dateFormatted}  //  ${timeFormatted}`, stripWidth / 2, footerCenterY + 8);
 
-  return canvas;
+  // Tiny Vintage Exposure / Film Mark
+  ctx.fillStyle = paperColor === "cream" ? "#a8a29e" : "#a1a1aa";
+  ctx.font = '600 12px "Courier New", Courier, monospace';
+  ctx.letterSpacing = "3px";
+  ctx.fillText(`EXP 04 / 35MM ANALOG PROCESS • ${filter.tagline.toUpperCase()}`, stripWidth / 2, footerCenterY + 42);
+
+  return finalCanvas;
 }
 
-/**
- * Converts canvas to Blob
- */
 export function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
   return new Promise((resolve) => {
     canvas.toBlob(resolve, "image/png", 0.95);

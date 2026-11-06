@@ -13,7 +13,7 @@ html, body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: #000000;
+  background-color: #121214;
   color: #ffffff;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -23,40 +23,44 @@ html, body {
   user-select: none;
   -webkit-user-select: none;
   touch-action: manipulation;
+  overscroll-behavior: none;
 }
 
 /* Safe area padding utilities */
 .pt-safe {
-  padding-top: max(env(safe-area-inset-top, 0px), 1rem);
+  padding-top: max(env(safe-area-inset-top, 0px), 0.75rem);
 }
 
 .pb-safe {
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), 1.5rem);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 1.25rem);
 }
 
 .pl-safe {
-  padding-left: max(env(safe-area-inset-left, 0px), 1rem);
+  padding-left: max(env(safe-area-inset-left, 0px), 0.75rem);
 }
 
 .pr-safe {
-  padding-right: max(env(safe-area-inset-right, 0px), 1rem);
+  padding-right: max(env(safe-area-inset-right, 0px), 0.75rem);
 }
 
-.top-safe {
-  top: max(env(safe-area-inset-top, 0px), 1rem);
-}
-
-.bottom-safe {
-  bottom: max(env(safe-area-inset-bottom, 0px), 1.5rem);
-}
-
-/* Hide scrollbar while preserving smooth scroll */
+/* Hide scrollbar while preserving smooth momentum scroll */
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
 .scrollbar-none {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Analog subtle film noise overlay */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 99;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
 }
 
 /* Animations */
